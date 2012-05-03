@@ -14,13 +14,7 @@
 ** an existing VFS. The code in this file attempts to verify that SQLite
 ** correctly populates and syncs a journal file before writing to a
 ** corresponding database file.
-*/
-#if SQLITE_TEST          /* This file is used for testing only */
-
-#include "sqlite3.h"
-#include "sqliteInt.h"
-
-/*
+**
 ** INTERFACE
 **
 **   The public interface to this wrapper VFS is two functions:
@@ -99,6 +93,10 @@
 **
 **     c) The journal file is deleted using xDelete.
 */
+#if SQLITE_TEST          /* This file is used for testing only */
+
+#include "sqlite3.h"
+#include "sqliteInt.h"
 
 /*
 ** Maximum pathname length supported by the jt backend.
@@ -393,7 +391,7 @@ static int openTransaction(jt_file *pMain, jt_file *pJournal){
     while( rc==SQLITE_OK && iTrunk>0 ){
       u32 nLeaf;
       u32 iLeaf;
-      sqlite3_int64 iOff = (iTrunk-1)*pMain->nPagesize;
+      sqlite3_int64 iOff = (i64)(iTrunk-1)*pMain->nPagesize;
       rc = sqlite3OsRead(p, aData, pMain->nPagesize, iOff);
       nLeaf = decodeUint32(&aData[4]);
       for(iLeaf=0; rc==SQLITE_OK && iLeaf<nLeaf; iLeaf++){
@@ -411,6 +409,7 @@ static int openTransaction(jt_file *pMain, jt_file *pJournal){
         if( iOff==PENDING_BYTE ) continue;
         rc = sqlite3OsRead(pMain->pReal, aData, pMain->nPagesize, iOff);
         pMain->aCksum[ii] = genCksum(aData, pMain->nPagesize);
+        if( ii+1==pMain->nPage && rc==SQLITE_IOERR_SHORT_READ ) rc = SQLITE_OK;
       }
     }
 
@@ -664,7 +663,7 @@ static int jtCheckReservedLock(sqlite3_file *pFile, int *pResOut){
 */
 static int jtFileControl(sqlite3_file *pFile, int op, void *pArg){
   jt_file *p = (jt_file *)pFile;
-  return sqlite3OsFileControl(p->pReal, op, pArg);
+  return p->pReal->pMethods->xFileControl(p->pReal, op, pArg);
 }
 
 /*
